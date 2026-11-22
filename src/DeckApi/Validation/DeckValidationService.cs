@@ -70,7 +70,7 @@ public sealed class DeckValidationService(ICardCatalog catalog, IFormatCatalog f
             if (caller is null) return ValidationOutcome.SkippedNeedsCaller;
             // altered-draft links pools to DeckApi ids (imported decks kept their old-API id); the old-API id is a fallback.
             Guid[] ids = deck.LegacyId is { } legacyId ? [deck.Id, legacyId] : [deck.Id];
-            pool = await pools.GetPoolCountsAsync(ids, caller.Sub, caller.BearerToken, ct);
+            pool = CanonicalPool(await pools.GetPoolCountsAsync(ids, caller.Sub, caller.BearerToken, ct), catalog);
         }
 
         var result = DeckValidator.Validate(format, lines, resolved, pool);
@@ -80,6 +80,24 @@ public sealed class DeckValidationService(ICardCatalog catalog, IFormatCatalog f
         deck.ValidatedAt = clock.GetUtcNow();
         if (result.Legal && format.Season is { } season) AddSeason(deck, format.Code, season.Code);
         return ValidationOutcome.Validated;
+    }
+
+    /// <summary>
+    /// altered-draft lists the prints actually opened (e.g. <c>ALT_ALIZE_B_AX_06_C</c>), while stored deck lines are
+    /// canonical (<c>ALT_CORE_B_AX_06_C</c>, see <see cref="DeckCanonicalizer"/>): pool keys are mapped to the same
+    /// canonical references, copies of one card summed across its prints, so reprints (heroes first) match.
+    /// </summary>
+    public static IReadOnlyDictionary<string, int>? CanonicalPool(IReadOnlyDictionary<string, int>? pool, ICardCatalog catalog)
+    {
+        if (pool is null) return null;
+        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (reference, count) in pool)
+        {
+            if (count <= 0) continue;
+            var canonical = catalog.CanonicalReference(reference) ?? reference;
+            result[canonical] = result.GetValueOrDefault(canonical) + count;
+        }
+        return result;
     }
 
     /// <summary>

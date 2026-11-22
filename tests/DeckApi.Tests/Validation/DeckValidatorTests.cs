@@ -160,6 +160,17 @@ public class DeckValidatorTests
 
         Assert.Equal([ValidationCodes.SealedPoolUnavailable], Codes(Validate("sealed", deck, pool: null)));
     }
+
+    [Fact]
+    public void Sealed_pool_of_reprints_matches_canonical_deck_lines()
+    {
+        // altered-draft lists the opened prints; the stored deck holds the canonical one.
+        var rawPool = new Dictionary<string, int> { ["ALT_ALIZE_B_AX_06_C"] = 2, ["ALT_CORE_B_AX_06_C"] = 1 };
+        var pool = DeckValidationService.CanonicalPool(rawPool, Catalog)!;
+        Assert.Equal(3, pool["ALT_CORE_B_AX_06_C"]);
+        Assert.False(pool.ContainsKey("ALT_ALIZE_B_AX_06_C"));
+        Assert.Null(DeckValidationService.CanonicalPool(null, Catalog));
+    }
 }
 
 public class ValidationMessagesTests
