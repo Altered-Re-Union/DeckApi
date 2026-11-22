@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DeckApi</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Deckfmt wire-format versions (see Deckfmt/DeckfmtConfig.cs). Shared with altered-bga-api:
+         set ids MUST stay identical in both repos. -->
+    <EmbeddedResource Include="Deckfmt\Config\*.json" />
+    <!-- Unique serial -> faction windows, copied from altered-draft (src/lib/data/factionRanges). -->
+    <EmbeddedResource Include="Cards\FactionRanges\*.json" />
+    <!-- Default format rules + validation message translations. -->
+    <EmbeddedResource Include="Formats\Config\*.json" />
+    <EmbeddedResource Include="Validation\Messages\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DeckApi.Tests" />
+  </ItemGroup>
+
+</Project>

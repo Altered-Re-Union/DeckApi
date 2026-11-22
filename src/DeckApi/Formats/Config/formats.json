@@ -1,0 +1,94 @@
+// Format rules. Ported from altered-core-decks-api (src/Validator/Format/*, FormatController).
+// Ban-list entry shapes: full reference "ALT_CORE_B_AX_04_U_123", family "BR_06", family+rarity "OR_27_R1".
+// Changing this file: run POST /api/admin/decks/revalidate?format=<code> afterwards.
+{
+  "shared": {
+    "banned": [],
+    // Seeded from the 20 is_suspended prints of uniques-search-api's non-unique catalog
+    // (family+rarity, so alt arts, promos and reprints are covered too).
+    "suspended": [
+      "BR_34_C", "BR_34_R1",
+      "AX_53_C",
+      "AX_58_C", "AX_58_R1",
+      "BR_06_C", "BR_06_R1",
+      "OR_27_R1", "OR_27_R2",
+      "AX_17_R1",
+      "YZ_11_R2",
+      "AX_81_C", "AX_81_R2"
+    ]
+  },
+  "formats": [
+    {
+      "code": "sandbox", "label": "Sandbox",
+      "minCards": 4, "maxCards": 100, "maxFactions": null,
+      "allowBanned": true, "allowSuspended": true,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"]
+    },
+    {
+      "code": "test", "label": "Test", "hidden": true,
+      "minCards": 4, "maxCards": 100, "maxFactions": null,
+      "allowBanned": true, "allowSuspended": true,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB", "FUGUE"]
+    },
+    {
+      "code": "nuc", "label": "NUC", "aliases": ["no_unique"],
+      "minCards": 39, "maxCards": 59,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"],
+      "maxCopiesPerFamily": 3, "maxUniques": 0, "maxRares": 15, "maxExalted": 3
+    },
+    {
+      "code": "standard", "label": "Standard",
+      "minCards": 39, "maxCards": 59,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"],
+      "maxCopiesPerFamily": 3, "maxUniques": 3, "maxRares": 15, "maxExalted": 3, "uniqueSingleCopy": true
+    },
+    {
+      "code": "frontier", "label": "Frontier",
+      "minCards": 39, "maxCards": 59,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"],
+      "maxCopiesPerFamily": 3, "maxUniques": 3, "maxRares": 15, "maxExalted": 3, "uniqueSingleCopy": true,
+      // Seasons, oldest first. The current season is the last one whose start is past (no start = already
+      // started). A season replaces the unique allowlist and adds bans/suspensions on top of the format's.
+      // Allowlists are copied from the prod formats bucket used by uniques-search-api
+      // (https://altered-reunion-formats-prod.s3.fr-par.scw.cloud/frontier.sNN.json).
+      // Dates are Paris midnight; a season ends when the next one starts.
+      // S5 starts 2026-11-24 (4 to 6 weeks): add it once frontier.s05.json is published.
+      "seasons": [
+        { "code": "S1", "label": "Saison 1", "start": "2026-07-20T00:00:00+02:00", "end": "2026-08-17T00:00:00+02:00", "uniqueAllowlist": "frontier.s01.json" },
+        { "code": "S2", "label": "Saison 2", "start": "2026-08-17T00:00:00+02:00", "end": "2026-09-29T00:00:00+02:00", "uniqueAllowlist": "frontier.s02.json" },
+        { "code": "S3", "label": "Saison 3", "start": "2026-09-29T00:00:00+02:00", "end": "2026-11-10T00:00:00+01:00", "uniqueAllowlist": "frontier.s03.json" },
+        { "code": "S4", "label": "Saison 4", "start": "2026-11-10T00:00:00+01:00", "end": "2026-11-24T00:00:00+01:00", "uniqueAllowlist": "frontier.s04.json" }
+      ]
+    },
+    {
+      "code": "singleton", "label": "Singleton",
+      "minCards": 59, "maxCards": 79,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"],
+      "maxCopiesPerFamily": 3, "maxCopiesPerRarity": 1, "maxUniques": 3,
+      "uniqueLimitsByHero": {
+        "3": ["teija", "kojo", "basira", "sigismar", "nevenka", "fen", "treyst"],
+        "4": ["subhash", "isaree", "atsadi", "arjun", "kauri", "rin", "zhen", "akesha"],
+        "5": ["sierra", "sol", "auraq", "nadir", "waru", "gulrang", "lindiwe", "afanas", "moyo"]
+      }
+    },
+    {
+      "code": "singleton_nuc", "label": "Singleton NUC", "aliases": ["singleton_no_unique"],
+      "minCards": 59, "maxCards": 79,
+      "allowedSets": ["CORE", "COREKS", "BISE", "ALIZE", "CYCLONE", "DUSTER", "DUSTEROP", "DUSTERTOP", "DUSTERCB", "TCS3", "WCQ25", "WCS26", "WCS25", "JUDGE", "WCF25", "MUSUBI", "EOLE", "EOLETOP", "EOLEOP", "EOLECB"],
+      "forbiddenSets": ["FUGUE"],
+      "maxCopiesPerFamily": 3, "maxCopiesPerRarity": 1, "maxUniques": 0
+    },
+    {
+      // Pool membership (altered-draft) is the only legality gate: no set restriction, bans allowed.
+      "code": "sealed", "label": "Sealed",
+      "minCards": 29, "maxCards": null, "maxFactions": 3,
+      "allowBanned": true, "allowSuspended": true,
+      "special": "sealed"
+    }
+  ]
+}
