@@ -55,7 +55,7 @@ public static class FormatEndpoints
             json["suspendedCards"] = f.AllowSuspended ? new JsonArray() : new JsonArray(f.EffectiveSuspended.Select(s => (JsonNode)s).ToArray());
             json["uniqueAllowlist"] = f.UniqueAllowlistRefs is { } allow ? new JsonArray(allow.Order().Select(s => (JsonNode)s).ToArray()) : null;
             json["season"] = f.Season?.Code;
-            json["seasons"] = new JsonArray(f.Seasons.Select(s => (JsonNode)new JsonObject
+            json["seasons"] = new JsonArray(formats.SeasonListOf(f.Code).Select(s => (JsonNode)new JsonObject
             {
                 ["code"] = s.Code,
                 ["label"] = s.Label,

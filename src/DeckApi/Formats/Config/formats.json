@@ -56,7 +56,8 @@
       // Allowlists are copied from the prod formats bucket used by uniques-search-api
       // (https://altered-reunion-formats-prod.s3.fr-par.scw.cloud/frontier.sNN.json).
       // Dates are Paris midnight; a season ends when the next one starts.
-      // S5 starts 2026-11-24 (4 to 6 weeks): add it once frontier.s05.json is published.
+      // The season picked on the website (Admin > Uniques format, e.g. frontier_s05) overrides these dates: it is
+      // the current season, with the allowlist of Formats:ManifestUrl, even when it is not declared here.
       "seasons": [
         { "code": "S1", "label": "Saison 1", "start": "2026-07-20T00:00:00+02:00", "end": "2026-08-17T00:00:00+02:00", "uniqueAllowlist": "frontier.s01.json" },
         { "code": "S2", "label": "Saison 2", "start": "2026-08-17T00:00:00+02:00", "end": "2026-09-29T00:00:00+02:00", "uniqueAllowlist": "frontier.s02.json" },

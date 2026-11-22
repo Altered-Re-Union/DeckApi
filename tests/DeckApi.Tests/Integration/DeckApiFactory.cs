@@ -18,12 +18,14 @@ public sealed class DeckApiFactory : WebApplicationFactory<Program>, IAsyncLifet
     public PostgreSqlContainer Postgres { get; } = new PostgreSqlBuilder("postgres:17-alpine").Build();
     public FakeLegacyApi Legacy { get; } = new();
     public FakeGameApi GameApi { get; } = new();
+    public FakeFormatsBucket FormatsBucket { get; } = new();
 
     public async Task InitializeAsync()
     {
         await Postgres.StartAsync();
         await Legacy.StartAsync();
         await GameApi.StartAsync();
+        await FormatsBucket.StartAsync();
         _ = Services; // boot the app (runs migrations)
         Services.GetRequiredService<CardCatalog>().Replace(TestCards.Catalog(), DateTimeOffset.UtcNow);
     }
@@ -45,6 +47,7 @@ public sealed class DeckApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         builder.UseSetting("GameApi:ApiKey", FakeGameApi.ApiKey);
         builder.UseSetting("GameApi:SyncMinutes", "0"); // synced on demand through the admin endpoint
         builder.UseSetting("GameApi:PageSize", "1"); // exercises pagination
+        builder.UseSetting("Formats:ManifestUrl", FormatsBucket.ManifestUrl);
     }
 
     public HttpClient ClientFor(string sub, string? pseudo = null, string scope = "openid read-decks write-deck")
@@ -61,6 +64,7 @@ public sealed class DeckApiFactory : WebApplicationFactory<Program>, IAsyncLifet
         await base.DisposeAsync();
         await Legacy.DisposeAsync();
         await GameApi.DisposeAsync();
+        await FormatsBucket.DisposeAsync();
         await Postgres.DisposeAsync();
     }
 }
@@ -69,4 +73,11 @@ public sealed class DeckApiFactory : WebApplicationFactory<Program>, IAsyncLifet
 public sealed class IntegrationCollection : ICollectionFixture<DeckApiFactory>
 {
     public const string Name = "integration";
+}
+
+/// <summary>Own API instance: switching the Frontier season would change what the other integration tests see.</summary>
+[CollectionDefinition(Name)]
+public sealed class SeasonSwitchCollection : ICollectionFixture<DeckApiFactory>
+{
+    public const string Name = "season-switch";
 }

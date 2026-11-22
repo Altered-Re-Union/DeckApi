@@ -35,9 +35,21 @@ builder.Services.AddHttpClient<UniquesSearchClient>(c =>
 });
 
 // Formats & validation.
-builder.Services.AddSingleton<IFormatCatalog>(FormatCatalog.Load(config["Formats:ConfigPath"]));
+builder.Services.AddSingleton(sp => FormatCatalog.Load(config["Formats:ConfigPath"], sp.GetRequiredService<TimeProvider>()));
+builder.Services.AddSingleton<IFormatCatalog>(sp => sp.GetRequiredService<FormatCatalog>());
 builder.Services.AddSingleton(ValidationMessages.LoadEmbedded());
 builder.Services.AddScoped<DeckValidationService>();
+builder.Services.AddScoped<DeckRevalidator>();
+// Season picked on the website's admin page (formats manifest id, e.g. frontier_s05): see FormatSeasonSelector.
+builder.Services.AddHttpClient<FormatsManifestClient>(c => c.Timeout = TimeSpan.FromSeconds(config.GetValue("Formats:ManifestTimeoutSeconds", 15)));
+builder.Services.AddScoped<FormatSeasonSelector>();
+builder.Services.AddSingleton<RevalidationQueue>();
+builder.Services.AddSingleton<FormatSeasonSelectionsLoader>();
+if (!isImport)
+{
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<FormatSeasonSelectionsLoader>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<RevalidationQueue>());
+}
 builder.Services.AddHttpClient<AlteredDraftSealedPoolClient>(c =>
 {
     // Optional: missing URL = sealed pools unavailable (sealed decks fail closed), never a startup failure.

@@ -326,6 +326,53 @@ namespace DeckApi.Data.Migrations
                     b.ToTable("deck_upvotes", (string)null);
                 });
 
+            modelBuilder.Entity("DeckApi.Data.FormatSeasonSelection", b =>
+                {
+                    b.Property<string>("Format")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("format");
+
+                    b.Property<string>("Season")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("season");
+
+                    b.Property<DateTimeOffset>("FirstSelectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("first_selected_at");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label");
+
+                    b.Property<string>("ManifestId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("manifest_id");
+
+                    b.Property<int?>("ManifestVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("manifest_version");
+
+                    b.Property<DateTimeOffset>("SelectedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("selected_at");
+
+                    b.PrimitiveCollection<string[]>("UniqueAllowlist")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("unique_allowlist");
+
+                    b.HasKey("Format", "Season")
+                        .HasName("pk_format_season_selections");
+
+                    b.ToTable("format_season_selections", (string)null);
+                });
+
             modelBuilder.Entity("DeckApi.Data.LegacyPendingDelete", b =>
                 {
                     b.Property<Guid>("LegacyId")

@@ -103,6 +103,68 @@ public class FormatSeasonsTests
         Assert.False(s1.CouldHaveBeenPlayed(new(2026, 7, 1, 0, 0, 0, TimeSpan.Zero)));
     }
 
+    private const string S3Unique = "ALT_CORE_B_AX_04_U_3";
+
+    private static SeasonSelection Selection(string season, DateTimeOffset firstSelectedAt, DateTimeOffset? selectedAt = null, string unique = S3Unique) =>
+        new("frontier", season, $"Saison {season[1..]}", new HashSet<string> { unique }, firstSelectedAt, selectedAt ?? firstSelectedAt);
+
+    [Fact]
+    public void A_selected_season_is_current_from_the_moment_it_is_picked()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero);
+        var formats = Seasonal(now);
+        // S3 is declared to start in 2027: picking it on the website starts it now, with the manifest's allowlist.
+        formats.ApplySeasonSelections([Selection("S3", now.AddHours(-1))]);
+
+        var current = formats.Find("frontier")!;
+        Assert.Equal("S3", current.Season!.Code);
+        Assert.Equal(now.AddHours(-1), current.Season.Start);
+        Assert.Null(current.Season.End);
+        Assert.True(Legal(current, DeckWith(S3Unique)));
+        Assert.False(Legal(current, DeckWith(S2Unique)));
+
+        Assert.Equal(["S1", "S2", "S3"], formats.SeasonsOf("frontier").Select(f => f.Season!.Code));
+        Assert.Equal(now.AddHours(-1), formats.SeasonsOf("frontier")[1].Season!.End);
+        Assert.Equal("S2", formats.SeasonAt("frontier", now.AddDays(-1))!.Season!.Code);
+        Assert.Equal("S3", formats.SeasonAt("frontier", now)!.Season!.Code);
+    }
+
+    [Fact]
+    public void An_undeclared_season_is_added_with_the_format_rules()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero);
+        var formats = Seasonal(now);
+        formats.ApplySeasonSelections([Selection("S5", now)]);
+
+        var current = formats.Find("frontier")!;
+        Assert.Equal(("S5", "Saison 5"), (current.Season!.Code, current.Season.Label));
+        Assert.Equal(3, current.MaxUniques);
+        Assert.Contains("BR_06", current.EffectiveSuspended);
+        Assert.True(Legal(current, DeckWith(S3Unique)));
+        // The declared S3 starts after S5 was picked: dropped while S5 is the selected season.
+        Assert.Equal(["S1", "S2", "S5"], formats.SeasonListOf("frontier").Select(s => s.Code));
+    }
+
+    [Fact]
+    public void Selecting_an_older_season_again_makes_it_current()
+    {
+        var now = new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.Zero);
+        var formats = Seasonal(now);
+        formats.ApplySeasonSelections([
+            Selection("S5", now.AddDays(-2)),
+            Selection("S2", now.AddDays(-30), selectedAt: now.AddDays(-1), unique: S2Unique),
+        ]);
+
+        var current = formats.Find("frontier")!;
+        Assert.Equal("S2", current.Season!.Code);
+        Assert.Null(current.Season.End);
+        Assert.Equal(new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero), current.Season.Start); // declared start kept
+        Assert.Equal(["S1", "S2"], formats.SeasonListOf("frontier").Select(s => s.Code));
+        // Back to the dates of formats.json once nothing is selected.
+        formats.ApplySeasonSelections([]);
+        Assert.Equal(["S1", "S2", "S3"], formats.SeasonListOf("frontier").Select(s => s.Code));
+    }
+
     [Fact]
     public void Embedded_frontier_has_the_prod_seasons()
     {

@@ -160,6 +160,27 @@ public sealed class SyncCursor
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// A season picked on the website's admin page ("Uniques format", e.g. <c>frontier_s05</c>), with the allowlist
+/// read from the formats manifest at that moment. The most recently selected season of a format is its current
+/// season, whatever the dates in <c>formats.json</c> say. See <see cref="Formats.FormatSeasonSelector"/>.
+/// </summary>
+public sealed class FormatSeasonSelection
+{
+    public required string Format { get; set; }
+    public required string Season { get; set; }
+    public required string Label { get; set; }
+
+    /// <summary>Manifest entry id and version, e.g. <c>frontier_s05</c> v2.</summary>
+    public required string ManifestId { get; set; }
+    public int? ManifestVersion { get; set; }
+    public string[] UniqueAllowlist { get; set; } = [];
+
+    /// <summary>First time the season was selected: its start when <c>formats.json</c> does not declare an earlier one.</summary>
+    public DateTimeOffset FirstSelectedAt { get; set; }
+    public DateTimeOffset SelectedAt { get; set; }
+}
+
 public sealed class DeckUpvote
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();

@@ -15,6 +15,7 @@ public sealed class DeckDbContext(DbContextOptions<DeckDbContext> options) : DbC
     public DbSet<CardCatalogSnapshot> CardCatalogSnapshots => Set<CardCatalogSnapshot>();
     public DbSet<DeckTournamentResult> DeckTournamentResults => Set<DeckTournamentResult>();
     public DbSet<SyncCursor> SyncCursors => Set<SyncCursor>();
+    public DbSet<FormatSeasonSelection> FormatSeasonSelections => Set<FormatSeasonSelection>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -89,6 +90,16 @@ public sealed class DeckDbContext(DbContextOptions<DeckDbContext> options) : DbC
             e.ToTable("sync_cursors");
             e.HasKey(c => c.Name);
             e.Property(c => c.Name).HasMaxLength(100);
+        });
+
+        b.Entity<FormatSeasonSelection>(e =>
+        {
+            e.ToTable("format_season_selections");
+            e.HasKey(s => new { s.Format, s.Season });
+            e.Property(s => s.Format).HasMaxLength(50);
+            e.Property(s => s.Season).HasMaxLength(20);
+            e.Property(s => s.Label).HasMaxLength(100);
+            e.Property(s => s.ManifestId).HasMaxLength(64);
         });
 
         b.Entity<CardCatalogSnapshot>(e =>

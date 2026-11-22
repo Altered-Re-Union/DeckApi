@@ -1,4 +1,5 @@
 using DeckApi.Data;
+using DeckApi.Formats;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeckApi.Import;
@@ -27,6 +28,8 @@ public static class ImportCommand
 
         using var scope = app.Services.CreateScope();
         if (migrate) await scope.ServiceProvider.GetRequiredService<DeckDbContext>().Database.MigrateAsync();
+        // Validate with the season picked on the website, like the API does.
+        await scope.ServiceProvider.GetRequiredService<FormatSeasonSelectionsLoader>().RefreshAsync(CancellationToken.None);
         var importer = scope.ServiceProvider.GetRequiredService<LegacyImporter>();
         var report = await importer.RunAsync(source, dryRun, CancellationToken.None);
         Console.WriteLine($"Users: {report.Users}, decks created: {report.DecksCreated}, updated: {report.DecksUpdated}, " +

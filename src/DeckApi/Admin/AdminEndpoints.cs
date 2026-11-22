@@ -1,8 +1,9 @@
+using System.Text.Json.Nodes;
 using DeckApi.Auth;
 using DeckApi.Data;
+using DeckApi.Decks;
 using DeckApi.Formats;
 using DeckApi.Tournaments;
-using DeckApi.Validation;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeckApi.Admin;
@@ -17,6 +18,8 @@ public static class AdminEndpoints
         // Machine-to-machine: X-Api-Key = ApiKeys:Maintenance.
         app.MapPost("/api/admin/decks/revalidate", Revalidate).RequireAuthorization(AuthPolicies.MaintenanceApiKey);
         app.MapPost("/api/admin/tournament-decks/sync", SyncTournamentDecks).RequireAuthorization(AuthPolicies.MaintenanceApiKey);
+        app.MapPost("/api/admin/formats/season", SelectSeason).RequireAuthorization(AuthPolicies.MaintenanceApiKey);
+        app.MapGet("/api/admin/formats/{format}/season", SeasonStatus).RequireAuthorization(AuthPolicies.MaintenanceApiKey);
     }
 
     /// <summary>POST /api/admin/tournament-decks/sync — runs the GameApi import now (it also runs every <c>GameApi:SyncMinutes</c>).</summary>
@@ -55,53 +58,94 @@ public static class AdminEndpoints
     /// <summary>
     /// POST /api/admin/decks/revalidate?format=standard[&amp;seasons=all] — recomputes legality of every
     /// deck of a format (aliases accepted), e.g. after a ban-list or set rotation change in
-    /// <c>formats.json</c>. Drafts included. Sealed decks are skipped: their pool can only
-    /// be read with the owner's own token. A deck legal in the current season gets it in <c>validSeasons</c>;
-    /// <c>seasons=all</c> also checks every past season (data recovery, see <see cref="DeckValidationService.BackfillSeasonsAsync"/>). Returns counters.
+    /// <c>formats.json</c>. See <see cref="DeckRevalidator"/>. Returns counters.
     /// </summary>
-    private static async Task<IResult> Revalidate(HttpContext http, DeckDbContext db, DeckValidationService validation, IFormatCatalog formats, ILoggerFactory loggers, CancellationToken ct)
+    private static async Task<IResult> Revalidate(HttpContext http, DeckRevalidator revalidator, IFormatCatalog formats, CancellationToken ct)
     {
         var code = http.Request.Query["format"].ToString();
         var format = formats.Find(code);
         if (format is null) return Problems.BadRequest($"Unknown format \"{code}\". Expected one of: {string.Join(", ", formats.All.Select(f => f.Code))}.");
 
-        var logger = loggers.CreateLogger("DeckApi.Admin.Revalidate");
         var backfill = http.Request.Query["seasons"].ToString() == "all";
-        int processed = 0, changed = 0, skipped = 0, unavailable = 0, seasonsAdded = 0;
-        Guid? after = null;
-        const int batchSize = 200;
+        var r = await revalidator.RunAsync(format, backfill, ct);
+        return Results.Json(new { format = r.Format, processed = r.Processed, changed = r.Changed, skipped = r.Skipped, catalogUnavailable = r.CatalogUnavailable, seasonsAdded = r.SeasonsAdded });
+    }
 
-        while (true)
+    /// <summary>
+    /// POST /api/admin/formats/season <c>{ "formatId": "frontier_s05" }</c> — called by the website when the Frontier
+    /// format is changed on its admin page (core-altered-cards › Uniques format). The season becomes the current one
+    /// with the manifest's allowlist, and the format's decks are revalidated in the background (202).
+    /// </summary>
+    private static async Task<IResult> SelectSeason(HttpContext http, FormatSeasonSelector selector, IFormatCatalog formats, CancellationToken ct)
+    {
+        JsonObject? body;
+        try
         {
-            var query = db.Decks.Where(d => d.Format == format.Code);
-            if (after is { } last) query = query.Where(d => d.Id.CompareTo(last) > 0);
-            var batch = await query.OrderBy(d => d.Id).Take(batchSize).ToListAsync(ct);
-            if (batch.Count == 0) break;
-
-            foreach (var deck in batch)
-            {
-                var before = (deck.Legal, System.Text.Json.JsonSerializer.Serialize(deck.ValidationErrors));
-                var seasonsBefore = deck.ValidSeasons.Length;
-                var outcome = await validation.RevalidateAsync(deck, caller: null, ct);
-                if (backfill) await validation.BackfillSeasonsAsync(deck, ct);
-                seasonsAdded += deck.ValidSeasons.Length - seasonsBefore;
-                processed++;
-                switch (outcome)
-                {
-                    case ValidationOutcome.SkippedNeedsCaller: skipped++; break;
-                    case ValidationOutcome.CatalogUnavailable: unavailable++; break;
-                    default:
-                        if (before != (deck.Legal, System.Text.Json.JsonSerializer.Serialize(deck.ValidationErrors))) changed++;
-                        break;
-                }
-            }
-            await db.SaveChangesAsync(ct);
-            db.ChangeTracker.Clear();
-            after = batch[^1].Id;
+            body = await http.Request.ReadFromJsonAsync<JsonObject>(ct);
         }
+        catch (System.Text.Json.JsonException)
+        {
+            body = null;
+        }
+        var id = body?["formatId"]?.GetValueKind() == System.Text.Json.JsonValueKind.String ? body["formatId"]!.GetValue<string>() : null;
+        if (string.IsNullOrWhiteSpace(id)) return Problems.BadRequest("Body must be { \"formatId\": \"frontier_sNN\" }.");
 
-        logger.LogInformation("Revalidated {Format}: {Processed} processed, {Changed} changed, {Skipped} skipped, {Unavailable} catalog unavailable, {SeasonsAdded} seasons added",
-            format.Code, processed, changed, skipped, unavailable, seasonsAdded);
-        return Results.Json(new { format = format.Code, processed, changed, skipped, catalogUnavailable = unavailable, seasonsAdded });
+        try
+        {
+            var selection = await selector.SelectAsync(id, ct);
+            return Results.Json(SeasonJson(formats, selection.Format, revalidation: "queued"), statusCode: StatusCodes.Status202Accepted);
+        }
+        catch (SeasonSelectionException e)
+        {
+            return e.Error switch
+            {
+                SeasonSelectionError.ManifestUnavailable => Problems.Error(StatusCodes.Status502BadGateway, e.Message),
+                SeasonSelectionError.NotInManifest or SeasonSelectionError.EmptyAllowlist => Problems.Error(StatusCodes.Status422UnprocessableEntity, e.Message),
+                _ => Problems.BadRequest(e.Message),
+            };
+        }
+    }
+
+    /// <summary>GET /api/admin/formats/{format}/season — current season, its source and the last background revalidation.</summary>
+    private static async Task<IResult> SeasonStatus(string format, IFormatCatalog formats, DeckDbContext db, RevalidationQueue revalidations, CancellationToken ct)
+    {
+        if (formats.Find(format) is not { } definition) return Problems.NotFound();
+        var json = SeasonJson(formats, definition.Code, revalidations.IsPending(definition.Code) ? "queued" : null);
+        var season = definition.Season?.Code;
+        var selection = season is null ? null : await db.FormatSeasonSelections.AsNoTracking()
+            .Where(s => s.Format == definition.Code && s.Season == season)
+            .Select(s => new { s.ManifestId, s.ManifestVersion, s.SelectedAt })
+            .FirstOrDefaultAsync(ct);
+        json["selection"] = selection is null ? null : new JsonObject
+        {
+            ["manifestId"] = selection.ManifestId,
+            ["manifestVersion"] = selection.ManifestVersion,
+            ["selectedAt"] = selection.SelectedAt.ToString("O"),
+        };
+        if (revalidations.Last.TryGetValue(definition.Code, out var last))
+        {
+            json["lastRevalidation"] = new JsonObject
+            {
+                ["finishedAt"] = last.FinishedAt.ToString("O"),
+                ["error"] = last.Error,
+                ["processed"] = last.Report?.Processed,
+                ["changed"] = last.Report?.Changed,
+            };
+        }
+        return Results.Json(json);
+    }
+
+    private static JsonObject SeasonJson(IFormatCatalog formats, string code, string? revalidation)
+    {
+        var current = formats.Find(code)!;
+        return new JsonObject
+        {
+            ["format"] = current.Code,
+            ["season"] = current.Season?.Code,
+            ["label"] = current.Season?.Label,
+            ["start"] = current.Season?.Start?.ToString("O"),
+            ["uniqueAllowlistCount"] = current.UniqueAllowlistRefs?.Count,
+            ["revalidation"] = revalidation,
+        };
     }
 }

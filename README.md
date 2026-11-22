@@ -41,6 +41,7 @@ altered-bga-api can read any deck by id with `X-Api-Key: <ApiKeys:Bga>`, like th
 
 These are new:
 - `POST /api/admin/decks/revalidate?format=standard[&seasons=all]` with header `X-Api-Key: <ApiKeys:Maintenance>`. It recomputes the legality of every deck of that format (drafts included) and returns counters. Sealed decks are skipped, because their pool can only be read with the owner's token.
+- `POST /api/admin/formats/season` and `GET /api/admin/formats/{format}/season` (`X-Api-Key: <ApiKeys:Maintenance>`): see [Switching season from the website](#switching-season-from-the-website).
 - `GET /healthz`.
 
 ### Archived decks
@@ -83,6 +84,24 @@ started); a deck is validated with the current season's rules.
 - The allowlists are copies of the prod formats bucket that uniques-search-api reads
   (`https://altered-reunion-formats-prod.s3.fr-par.scw.cloud/frontier.sNN.json`, S1 to S4). The bucket's `frontier.json`
   is not used: the season files are explicit.
+
+#### Switching season from the website
+
+The website's admin page *core-altered-cards › Uniques format* picks the formats manifest id the site uses for
+Frontier (`frontier_s05`…). On save, it calls `POST /api/admin/formats/season` with `{ "formatId": "frontier_s05" }` and
+`X-Api-Key: <ApiKeys:Maintenance>` (website constant `DECKS_API_MAINTENANCE_KEY`). DeckApi then:
+
+1. Reads that entry and its allowlist from `Formats:ManifestUrl`, which must be the manifest the website lists (prod or preprod bucket).
+2. Stores the selection in `format_season_selections`. Every instance reloads it within `Formats:SelectionRefreshSeconds`, and on restart.
+3. Makes it the current season, even when it is not declared in `formats.json`:
+   - An undeclared season gets the format's rules with that allowlist, labelled `Saison N`.
+   - A declared season keeps its bans and takes the manifest's allowlist.
+   - It starts when first selected, unless `formats.json` declares an earlier start, and has no end. The previous season ends when it starts.
+   - Picking an older season again makes it current again. Later seasons are then ignored, but decks keep the seasons already in their `validSeasons`.
+4. Answers `202` and revalidates every deck of the format in the background. `GET /api/admin/formats/frontier/season` shows the current season, the selection (manifest id + version) and the last revalidation.
+
+Errors: `400` for an id that is not `<format>_sNN` (e.g. the site's default `frontier`), `422` for an id missing from
+the manifest or with an empty allowlist, `502` when the manifest cannot be read. In every error case the current season does not change.
 
 ### Additive fields on a deck
 
@@ -168,6 +187,8 @@ Deckfmt codec versions (shared with altered-bga-api and alteredcore-website's to
 | `Cards:RefreshMinutes` | 60 | catalog refresh; the last good copy is kept in `card_catalog_snapshots` |
 | `Cards:ImageUrlTemplate` | empty | `{reference}` and `{locale}` placeholders for `imagePath`; null when empty |
 | `Formats:ConfigPath` | empty | directory with a `formats.json` (and allowlists) overriding the embedded one; run the revalidate endpoint afterwards |
+| `Formats:ManifestUrl` | prod formats bucket `manifest.json` | where the season picked on the website is read from; preprod: `https://altered-reunion-formats-preprod.s3.fr-par.scw.cloud/manifest.json` |
+| `Formats:SelectionRefreshSeconds` | 60 | how often an instance reloads the season selections; 0 = startup only |
 | `AlteredDraft:BaseUrl` | `https://altered-draft.altered.re` | sealed pools; unavailable means sealed decks are invalid (fail closed) |
 | `Legacy:BaseUrl` | `https://decks.alteredcore.org` | empty disables the synchronisation |
 | `Legacy:TimeoutMs` | 2000 | |
