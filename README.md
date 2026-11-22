@@ -50,6 +50,10 @@ Archiving a deck is `isDraft: true`. It hides the deck in BGA only: it stays in 
 
 When the legacy sync archives a deck because it disappeared from the old API, it also sets `legacyDeletedAt`. That deck is no longer pushed to the old API, even when edited. `isDraft: false` clears `legacyDeletedAt` and recreates the deck there, with a new old-API id.
 
+Sealed decks are always archived: on creation, on update (`isDraft: false` is ignored, but still clears `legacyDeletedAt`), on the legacy sync and on import. BGA never reads them from the player's deck list. altered-bga-api asks altered-draft for the tournament's sealed decklist, then loads the deck by id, where `isDraft` does not matter.
+
+A deck not validated yet (`validatedAt` null, for example a sealed deck imported from the old API) is validated with the owner's token on their next `GET /api/decks` or `GET /api/decks/{id}`. BGA's deck load relays the player's bearer, so a sealed deck is validated before altered-bga-api checks that it is legal.
+
 ### Tournament decks
 
 DeckApi imports the decks played in BGA tournaments from GameApi (`GET {GameApi:BaseUrl}/api/tournament-decks`,
@@ -164,8 +168,8 @@ The script runs these steps:
 
 What the import does:
 - Users are matched by Keycloak id. Decks keep their id.
-- Content is re-encoded and legality is recomputed with the new rules.
-- Sealed decks keep the backup's `legal` flag.
+- Content is re-encoded and legality is recomputed with the new rules. The old API's `legal` column is ignored (the live sync never reads it either).
+- Sealed decks are imported illegal and pending, because their pool can only be read with the owner's token. The owner's next `GET /api/decks` validates them (up to 50 pending decks per call).
 - Upvotes are copied.
 - It is re-runnable: a deck is only updated when the backup is newer than what was last synced. `--dry-run` writes nothing.
 

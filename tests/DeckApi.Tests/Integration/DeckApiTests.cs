@@ -254,6 +254,38 @@ public sealed class DeckApiTests(DeckApiFactory factory)
     }
 
     [Fact]
+    public async Task Sealed_decks_are_always_archived()
+    {
+        var client = factory.ClientFor("user-sealed-archive");
+        var created = await Json(await client.PostAsJsonAsync("/api/decks", DeckBody("Sealed", TestCards.StandardAxDeck(), format: "sealed")));
+        Assert.True(created["isDraft"]!.GetValue<bool>());
+
+        var id = created["id"]!.GetValue<string>();
+        var response = await client.PatchAsync($"/api/decks/{id}", new StringContent("""{"isDraft":false}""", Encoding.UTF8, "application/merge-patch+json"));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True((await Json(response))["isDraft"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task Reading_an_own_pending_deck_validates_it()
+    {
+        var client = factory.ClientFor("user-pending-read");
+        var created = await Json(await client.PostAsJsonAsync("/api/decks", DeckBody("Pending", TestCards.StandardAxDeck())));
+        var id = Guid.Parse(created["id"]!.GetValue<string>());
+
+        // As imported from the old API without a verdict (sealed deck: pool needs the owner's token).
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<DeckDbContext>();
+            await db.Decks.Where(d => d.Id == id).ExecuteUpdateAsync(s => s.SetProperty(d => d.Legal, false).SetProperty(d => d.ValidatedAt, (DateTimeOffset?)null));
+        }
+
+        // Its owner reading it (BGA's deck load relays the player's bearer) validates it.
+        var deck = await Json(await client.GetAsync($"/api/decks/{id}"));
+        Assert.True(deck["legal"]!.GetValue<bool>());
+    }
+
+    [Fact]
     public async Task Old_api_down_does_not_block_writes_and_is_caught_up_later()
     {
         var client = factory.ClientFor("user-down");

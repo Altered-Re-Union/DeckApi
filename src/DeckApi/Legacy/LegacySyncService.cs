@@ -136,6 +136,7 @@ public sealed class LegacySyncService(
         {
             logger.LogInformation("Deck {DeckId} is back on the old API, restoring it", deck.Id);
             deck.IsDraft = remote[deck.LegacyId!.Value].IsDraft;
+            SealedDecks.KeepArchived(deck);
             deck.LegacyDeletedAt = null;
         }
 
@@ -204,6 +205,7 @@ public sealed class LegacySyncService(
         deck.Format = formats.Find(remote.Format)?.Code ?? remote.Format;
         deck.IsPublic = remote.IsPublic;
         deck.IsDraft = remote.IsDraft;
+        SealedDecks.KeepArchived(deck); // not pushed back: the old API keeps its own isDraft until the next local write
         deck.UpdatedAt = remote.UpdatedAt;
         deck.LegacyUpdatedAt = remote.Stamp;
         deck.LegacySyncPending = false;

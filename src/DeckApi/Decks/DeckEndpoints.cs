@@ -37,11 +37,14 @@ public static class DeckEndpoints
     /// aliases accepted), <c>legal</c>, <c>isDraft</c>, <c>cardReference</c>, <c>family</c>.
     /// </summary>
     private static async Task<IResult> ListMine(
-        HttpContext http, DeckDbContext db, LegacySyncService sync, DeckPresenter presenter, IFormatCatalog formats, ICardCatalog catalog, CancellationToken ct)
+        HttpContext http, DeckDbContext db, LegacySyncService sync, DeckService service, DeckPresenter presenter, IFormatCatalog formats, ICardCatalog catalog, CancellationToken ct)
     {
         var user = http.CurrentUser()!;
         if (http.BearerToken() is { } token)
+        {
             await sync.SyncUserAsync(user, token, Caller(http, user), ct);
+            await service.RevalidatePendingAsync(user, Caller(http, user), ct);
+        }
 
         var q = http.Request.Query;
         // Tournament copies are independent of the player's own decks: never listed here (nor in BGA).
@@ -73,8 +76,12 @@ public static class DeckEndpoints
     }
 
     /// <summary>GET /api/decks/{id} — public deck to anyone (counts a view), private deck to its owner only. Also accepts an old-API id.</summary>
-    private static async Task<IResult> Get(Guid id, HttpContext http, DeckDbContext db, DeckPresenter presenter, IConfiguration config, CancellationToken ct)
+    private static async Task<IResult> Get(Guid id, HttpContext http, DeckDbContext db, DeckService service, DeckPresenter presenter, IConfiguration config, CancellationToken ct)
     {
+        // The owner's own deck still pending validation (sealed deck imported from the old API): validated now, with their bearer.
+        if (http.CurrentUser() is { } caller && http.BearerToken() is not null)
+            await service.RevalidatePendingAsync(caller, Caller(http, caller), ct, deckId: id);
+
         var deck = await db.Decks.Include(d => d.User).Include(d => d.TournamentResults).AsNoTracking()
             .FirstOrDefaultAsync(d => d.Id == id || d.LegacyId == id, ct);
         if (deck is null) return Problems.NotFound();

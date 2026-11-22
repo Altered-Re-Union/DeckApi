@@ -15,8 +15,9 @@ namespace DeckApi.Import;
 /// Idempotent and re-runnable: users are matched by Keycloak id, decks by legacy id. Decks keep their old
 /// id (<c>Id = LegacyId</c>) so links, BGA and altered-draft references keep working. A deck already
 /// present is only overwritten when the backup has a newer <c>updated_at</c> than what was last synced.
-/// Content is re-encoded (Deckfmt) and legality recomputed with the new rules; sealed decks keep the
-/// backup's <c>legal</c> flag (their pool needs the owner's token).
+/// Content is re-encoded (Deckfmt) and legality recomputed with the new rules; the backup's <c>legal</c>
+/// column is never used. Sealed decks (pool readable only with the owner's token) are imported illegal and
+/// pending, and validated on the owner's next deck listing (<see cref="DeckService.RevalidatePendingAsync"/>).
 ///
 /// Run: <c>dotnet DeckApi.dll import-legacy --source "Host=...;Database=legacy;..." [--dry-run]</c>
 /// (target = <c>ConnectionStrings:decks</c>), or <c>scripts/import-legacy.ps1|sh</c> from a dump file.
@@ -80,7 +81,7 @@ public sealed class LegacyImporter(
         int created = 0, updated = 0, unchanged = 0, uncompressible = 0;
         const string deckSql = """
             SELECT d.id, d.user_id, d.name, d.description, d.format, d.is_public, d.is_draft, d.created_at, d.updated_at,
-                   d.legal, d.altered_id, d.view_count, d.upvote_count,
+                   d.altered_id, d.view_count, d.upvote_count,
                    COALESCE((SELECT json_agg(json_build_array(c.card_reference, c.quantity) ORDER BY c.id)
                              FROM deck_card c WHERE c.deck_id = d.id)::text, '[]')
             FROM deck d
@@ -131,20 +132,29 @@ public sealed class LegacyImporter(
                 deck.Format = formats.Find(rawFormat)?.Code ?? rawFormat;
                 deck.IsPublic = reader.GetBoolean(5);
                 deck.IsDraft = reader.GetBoolean(6);
+                SealedDecks.KeepArchived(deck);
                 deck.UpdatedAt = updatedAt;
                 deck.LegacyUpdatedAt = stamp;
                 deck.LegacySyncPending = false;
-                deck.ViewCount = reader.GetInt32(11);
-                deck.UpvoteCount = reader.GetInt32(12);
-                var alteredId = reader.IsDBNull(10) ? null : reader.GetString(10);
+                deck.ViewCount = reader.GetInt32(10);
+                deck.UpvoteCount = reader.GetInt32(11);
+                var alteredId = reader.IsDBNull(9) ? null : reader.GetString(9);
                 if (alteredId is not null && alteredId != deck.AlteredId && !takenAlteredIds.Add(alteredId)) alteredId = deck.AlteredId;
                 deck.AlteredId = alteredId;
 
                 // Alt-art/promo prints stored in the old list become overrides of the canonical cards.
-                var canonical = DeckCanonicalizer.Canonicalize(ParseCards(reader.GetString(13)), null, deck.AltArtOverrides?.Tokens, catalog);
+                var canonical = DeckCanonicalizer.Canonicalize(ParseCards(reader.GetString(12)), null, deck.AltArtOverrides?.Tokens, catalog);
                 deck.AltArtOverrides = canonical.Overrides;
                 var outcome = await validation.ApplyAsync(deck, canonical.Lines, caller: null, ct);
-                if (outcome == ValidationOutcome.SkippedNeedsCaller) deck.Legal = reader.GetBoolean(9); // sealed
+                if (outcome == ValidationOutcome.SkippedNeedsCaller)
+                {
+                    // Sealed: the pool needs the owner's token. The old API's verdict is not trusted: illegal and
+                    // pending (ValidatedAt null) until the owner's next GET /api/decks revalidates it.
+                    deck.Legal = false;
+                    deck.ValidationErrors = null;
+                    deck.LegalityDetail = null;
+                    deck.ValidatedAt = null;
+                }
                 if (deck.ExtraCards is { Count: > 0 })
                 {
                     uncompressible++;

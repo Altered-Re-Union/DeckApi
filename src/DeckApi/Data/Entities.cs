@@ -37,7 +37,8 @@ public sealed class Deck
 
     /// <summary>
     /// "Archived": hidden in BGA only. Never affects validation, the owner's listing nor public listings (an
-    /// archived deck stays shared). Also set by the legacy sync when the deck disappears from the old API.
+    /// archived deck stays shared). Also set by the legacy sync when the deck disappears from the old API, and
+    /// always on sealed decks (<see cref="Decks.SealedDecks"/>).
     /// </summary>
     public bool IsDraft { get; set; }
     public string? AlteredId { get; set; }
